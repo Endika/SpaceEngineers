@@ -38,6 +38,7 @@ using VRage.ObjectBuilders;
 
 namespace Sandbox.Game.Entities
 {
+    [MyEntityType(typeof(MyObjectBuilder_EntityBase))]
     public partial class MyEntity
     {
         #region Fields
@@ -853,6 +854,7 @@ namespace Sandbox.Game.Entities
                 }
             }
 
+            MyWeldingGroups.Static.AddNode(this);
             VRageRender.MyRenderProxy.GetRenderProfiler().EndProfilingBlock();
         }
 
@@ -860,6 +862,9 @@ namespace Sandbox.Game.Entities
         public virtual void OnRemovedFromScene(object source)
         {
             InScene = false;
+
+            if(MyWeldingGroups.Static.GetGroup(this) != null) //because of weird handling of weapons
+                MyWeldingGroups.Static.RemoveNode(this);
 
             if (Hierarchy != null)
             {
@@ -939,8 +944,7 @@ namespace Sandbox.Game.Entities
                 this.Name = objectBuilder.Name;
                 this.Render.PersistentFlags = objectBuilder.PersistentFlags;
 
-                if (MyPerGameSettings.ComponentSaving && objectBuilder.ComponentContainer != null)
-                    this.Components.Deserialize(objectBuilder.ComponentContainer);
+                this.Components.Deserialize(objectBuilder.ComponentContainer);
             }
 
             AllocateEntityID();
@@ -985,7 +989,7 @@ namespace Sandbox.Game.Entities
         }
 
         //  This is real initialization of this class!!! Instead of constructor.
-        public void Init(StringBuilder displayName,
+        public virtual void Init(StringBuilder displayName,
                          string model,
                          MyEntity parentObject,
                          float? scale,
@@ -1061,6 +1065,10 @@ namespace Sandbox.Game.Entities
                         subpart.Render.EnableColorMaskHsv = Render.EnableColorMaskHsv;
                         subpart.Render.ColorMaskHsv = Render.ColorMaskHsv;
                         subpart.Init(null, data.File, this, null);
+
+                        // Set this to false becase no one else is responsible for rendering subparts
+                        subpart.Render.NeedsDrawFromParent = false;
+                        
                         subpart.PositionComp.LocalMatrix = data.InitialTransform;
                         Subparts[data.Name] = subpart;
 
@@ -1232,8 +1240,7 @@ namespace Sandbox.Game.Entities
                 objBuilder.Name = this.Name;
                 objBuilder.PersistentFlags = Render.PersistentFlags;
 
-                if (MyPerGameSettings.ComponentSaving)
-                    objBuilder.ComponentContainer = Components.Serialize();
+                objBuilder.ComponentContainer = Components.Serialize();
             }
             return objBuilder;
         }

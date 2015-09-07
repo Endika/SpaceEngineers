@@ -101,7 +101,8 @@ namespace Sandbox.Definitions
                 m_environmentItemsEntries = new HashSet<EnvironmentItemsEntry>();
                 m_componentBlockEntries = new HashSet<MyComponentBlockEntry>();
 
-                m_componentBlocks = new Dictionary<MyDefinitionId, bool>();
+                m_componentBlocks = new HashSet<MyDefinitionId>(MyDefinitionId.Comparer);
+                m_componentIdToBlock = new Dictionary<MyDefinitionId, MyCubeBlockDefinition>(MyDefinitionId.Comparer);
 
                 m_categoryClasses = new List<MyGuiBlockCategoryDefinition>(25);
                 m_categories = new Dictionary<string, MyGuiBlockCategoryDefinition>(25);
@@ -118,6 +119,7 @@ namespace Sandbox.Definitions
                 m_battleDefinition = new MyBattleDefinition();
 
                 m_planetGeneratorDefinitions = new DefinitionDictionary<MyPlanetGeneratorDefinition>(5);
+                m_moonGeneratorDefinitions = new DefinitionDictionary<MyPlanetGeneratorDefinition>(5);
 
                 m_componentGroups = new DefinitionDictionary<MyComponentGroupDefinition>(4);
                 m_componentGroupMembers = new Dictionary<MyDefinitionId, MyTuple<int, MyComponentGroupDefinition>>();
@@ -313,6 +315,14 @@ namespace Sandbox.Definitions
                         m_planetGeneratorDefinitions.Remove(entry.Key);
                 }
 
+                foreach (var entry in definitionSet.m_moonGeneratorDefinitions)
+                {
+                    if (entry.Value.Enabled)
+                        m_moonGeneratorDefinitions[entry.Key] = entry.Value;
+                    else
+                        m_moonGeneratorDefinitions.Remove(entry.Key);
+                }
+
                 foreach (var entry in definitionSet.m_planetPrefabDefinitions)
                 {
                     if (entry.Value.Enabled)
@@ -384,7 +394,8 @@ namespace Sandbox.Definitions
             internal HashSet<EnvironmentItemsEntry> m_environmentItemsEntries;
             internal HashSet<MyComponentBlockEntry> m_componentBlockEntries;
 
-            public Dictionary<MyDefinitionId, bool> m_componentBlocks;
+            public HashSet<MyDefinitionId> m_componentBlocks;
+            public Dictionary<MyDefinitionId, MyCubeBlockDefinition> m_componentIdToBlock;
 
             internal DefinitionDictionary<MyBlueprintDefinitionBase> m_blueprintsByResultId;
 
@@ -412,6 +423,7 @@ namespace Sandbox.Definitions
             internal MyBattleDefinition m_battleDefinition;
 
             internal DefinitionDictionary<MyPlanetGeneratorDefinition> m_planetGeneratorDefinitions;
+            internal DefinitionDictionary<MyPlanetGeneratorDefinition> m_moonGeneratorDefinitions;
 
             internal DefinitionDictionary<MyComponentGroupDefinition> m_componentGroups;
             internal Dictionary<MyDefinitionId, MyTuple<int, MyComponentGroupDefinition>> m_componentGroupMembers;

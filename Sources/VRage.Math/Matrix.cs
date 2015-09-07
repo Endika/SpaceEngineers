@@ -1912,7 +1912,7 @@ namespace VRageMath
             return matrix;
         }
 
-        public static Matrix CreateLookAtInv(Vector3 cameraPosition, Vector3 cameraTarget, Vector3 cameraUpVector)
+        public static Matrix CreateLookAtInverse(Vector3 cameraPosition, Vector3 cameraTarget, Vector3 cameraUpVector)
         {
             Vector3 vector3_1 = Vector3.Normalize(cameraPosition - cameraTarget);
             Vector3 vector3_2 = Vector3.Normalize(Vector3.Cross(cameraUpVector, vector3_1));
@@ -1962,6 +1962,11 @@ namespace VRageMath
             result.M42 = -Vector3.Dot(vector1, cameraPosition);
             result.M43 = -Vector3.Dot(vector3_1, cameraPosition);
             result.M44 = 1f;
+        }
+
+        public static Matrix CreateWorld(Vector3 position)
+        {
+            return Matrix.CreateWorld(position, Vector3.Forward, Vector3.Up);
         }
 
         /// <summary>

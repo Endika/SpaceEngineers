@@ -67,7 +67,8 @@ namespace Sandbox.Game.Entities
             if (!Components.Has<MyInventoryBase>())
             {
                 m_inventory = new MyInventory(m_cargoDefinition.InventorySize.Volume, m_cargoDefinition.InventorySize, MyInventoryFlags.CanSend | MyInventoryFlags.CanReceive, this);
-                Components.Add<MyInventoryBase>(m_inventory);
+				if(MyFakes.ENABLE_MEDIEVAL_INVENTORY)
+					Components.Add<MyInventoryBase>(m_inventory);
 
                 if (m_containerType != null && MyFakes.RANDOM_CARGO_PLACEMENT && (cargoBuilder.Inventory == null || cargoBuilder.Inventory.Items.Count == 0))
                     SpawnRandomCargo();
@@ -77,6 +78,7 @@ namespace Sandbox.Game.Entities
             else
             {
                 m_inventory = Components.Get<MyInventoryBase>() as MyInventory;
+				Debug.Assert(m_inventory != null);
                 m_inventory.Owner = this;
             }
 
@@ -97,8 +99,10 @@ namespace Sandbox.Game.Entities
         {
             MyObjectBuilder_CargoContainer cargoBuilder = (MyObjectBuilder_CargoContainer)base.GetObjectBuilderCubeBlock(copy);
 
-            if (!MyPerGameSettings.ComponentSaving)
-                cargoBuilder.Inventory = m_inventory.GetObjectBuilder();
+			if (!MyFakes.ENABLE_MEDIEVAL_INVENTORY)
+				cargoBuilder.Inventory = m_inventory.GetObjectBuilder();
+			else
+				cargoBuilder.Inventory = null;
 
             if (m_containerType != null)
             {
@@ -123,25 +127,7 @@ namespace Sandbox.Game.Entities
             MyContainerTypeDefinition containerDefinition = MyDefinitionManager.Static.GetContainerTypeDefinition(m_containerType);
             if (containerDefinition != null && containerDefinition.Items.Count() > 0)
             {
-                int itemNumber = MyUtils.GetRandomInt(containerDefinition.CountMin, containerDefinition.CountMax);
-                for (int i = 0; i < itemNumber; ++i)
-                {
-                    MyContainerTypeDefinition.ContainerTypeItem item = containerDefinition.SelectNextRandomItem();
-                    MyFixedPoint amount = (MyFixedPoint)MyRandom.Instance.NextFloat((float)item.AmountMin, (float)item.AmountMax);
-
-                    if (MyDefinitionManager.Static.GetPhysicalItemDefinition(item.DefinitionId).HasIntegralAmounts)
-                    {
-                        amount = MyFixedPoint.Ceiling(amount); // Use ceiling to avoid amounts equal to 0
-                    }
-
-                    amount = MyFixedPoint.Min(m_inventory.ComputeAmountThatFits(item.DefinitionId), amount);
-                    if (amount > 0)
-                    {
-                        var inventoryItem = (MyObjectBuilder_PhysicalObject)MyObjectBuilderSerializer.CreateNewObject(item.DefinitionId);
-                        m_inventory.AddItems(amount, inventoryItem);
-                    }
-                }
-                containerDefinition.DeselectAll();
+                m_inventory.GenerateContent(containerDefinition);
             }
         }
 

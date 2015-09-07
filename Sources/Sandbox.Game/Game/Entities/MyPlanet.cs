@@ -57,7 +57,7 @@ namespace Sandbox.Game.Entities
     public class MyPlanet : MyVoxelBase, IMyGravityProvider, IMyOxygenProvider
     {
         const int PHYSICS_SECTOR_SIZE_METERS = 2048;
-        const float DEFAULT_GRAVITY_RADIUS_KM = 25.0f;
+        const float DEFAULT_GRAVITY_RADIUS_KM = 50.0f;
         const int ENVIROMENT_EXTEND = 1;
         const int ENVIROMENT_EXTEND_KEEP =  2*ENVIROMENT_EXTEND;
 
@@ -113,7 +113,7 @@ namespace Sandbox.Game.Entities
             (PositionComp as MyPositionComponent).WorldPositionChanged = WorldPositionChanged;
 
             Render = new MyRenderComponentPlanet();
-            AddDebugRenderComponent(new MyDebugRenderComponentVoxelMap(this));
+            AddDebugRenderComponent(new MyDebugRenderComponentPlanet(this));
         }
 
         public float MinimumSurfaceRadius 
@@ -121,6 +121,14 @@ namespace Sandbox.Game.Entities
             get 
             {
                 return m_planetInitValues.MinimumSurfaceRadius;
+            }
+        }
+
+        public float AveragePlanetRadius
+        {
+            get
+            {
+                return m_planetInitValues.AveragePlanetRadius;
             }
         }
 
@@ -144,7 +152,7 @@ namespace Sandbox.Game.Entities
         {
             get 
             {
-                return m_planetInitValues.HasAtmosphere && MySession.Static.Settings.EnableFlora && m_hasSpawningMaterial;
+                return m_planetInitValues.HasAtmosphere /*&& MySession.Static.Settings.EnableFlora*/ && m_hasSpawningMaterial;
             }
         }
 
@@ -152,7 +160,7 @@ namespace Sandbox.Game.Entities
         {   
             if(MyFakes.ENABLE_PLANETS == false)
             {
-                throw new PlanetsNotEnabledException();
+                //throw new PlanetsNotEnabledException();
             }
 
             ProfilerShort.Begin("base init");
@@ -203,7 +211,7 @@ namespace Sandbox.Game.Entities
         {
             if (MyFakes.ENABLE_PLANETS == false)
             {
-                throw new PlanetsNotEnabledException();
+                //throw new PlanetsNotEnabledException();
             }
 
             m_planetInitValues = arguments;
@@ -234,9 +242,9 @@ namespace Sandbox.Game.Entities
            MyOxygenProviderSystem.AddOxygenGenerator(this);
 
            if (m_planetInitValues.MarkAreaEmpty)
-            {
-                MyProceduralWorldGenerator.Static.MarkEmptyArea(PositionComp.GetPosition());
-            }
+           {
+               MyProceduralWorldGenerator.Static.MarkEmptyArea(PositionComp.GetPosition(), m_planetInitValues.MaximumHillRadius);
+           }
 
         }
 
@@ -356,21 +364,20 @@ namespace Sandbox.Game.Entities
             base.Closing();
             MyGravityProviderSystem.RemovePlanet(this);
             MyOxygenProviderSystem.RemoveOxygenGenerator(this);
+
+			if (m_physicsShapes != null)
+			{
+				foreach (var voxelMap in m_physicsShapes)
+				{
+					voxelMap.Value.Close();
+				}
+			}
         }
 
         protected override void BeforeDelete()
         {
             base.BeforeDelete();
-
-            if (m_physicsShapes != null)
-            {
-                foreach (var voxelMap in m_physicsShapes)
-                {
-                    voxelMap.Value.Close();
-                }
-            }
-
-
+           
             if (Render is MyRenderComponentPlanet)
             {
                 (Render as MyRenderComponentPlanet).CancelAllRequests();
@@ -384,9 +391,19 @@ namespace Sandbox.Game.Entities
                     m_planetSectorsPool.Deallocate(sector.Value);
                 }
             }
-
-            m_storage = null;
+			if (m_physicsShapes != null)
+			{
+				foreach (var voxelMap in m_physicsShapes)
+				{
+					MySession.Static.VoxelMaps.RemoveVoxelMap(voxelMap.Value);
+					voxelMap.Value.RemoveFromGamePruningStructure();
+				}
+			}
+			
             MySession.Static.VoxelMaps.RemoveVoxelMap(this);
+			Storage.DataProvider.ReleaseHeightMaps();
+
+			m_storage = null;
         }
 
         private void storage_RangeChangedPlanet(Vector3I minChanged, Vector3I maxChanged, MyStorageDataTypeFlags dataChanged)
@@ -501,12 +518,12 @@ namespace Sandbox.Game.Entities
 
             UpdateFloraAndPhysics();
 
-            if(m_sectorsToKeep.Count > 0)
+            if (m_planetEnvironmentSectors != null)
             {
                 m_sectorsToRemove.Clear();
                 foreach (var sector in m_planetEnvironmentSectors)
-                { 
-                    if(!m_sectorsToKeep.Contains(sector.Key))
+                {
+                    if (!m_sectorsToKeep.Contains(sector.Key))
                     {
                         m_sectorsToRemove.Add(sector.Key);
                     }
@@ -519,7 +536,6 @@ namespace Sandbox.Game.Entities
                     m_planetEnvironmentSectors.Remove(sectorCoords);
                     m_planetSectorsPool.Deallocate(sector);
                 }
-
             }
 
             m_entities.Clear();
@@ -559,8 +575,11 @@ namespace Sandbox.Game.Entities
 
                 if (CanSpawnFlora)
                 {
-                    ProfilerShort.Begin("Myplanet:: spawn flora");                   
-                    SpawnFlora(position);
+                    ProfilerShort.Begin("Myplanet:: spawn flora");
+                    if ((predictionOffset.LengthSquared() > 0.03 || entity == MySession.LocalCharacter) && distance > m_planetInitValues.MinimumSurfaceRadius)
+                    {
+                        SpawnFlora(position);
+                    }
                     ProfilerShort.End();
                 }
 
@@ -610,7 +629,7 @@ namespace Sandbox.Game.Entities
             if (CanSpawnFlora && MySession.LocalHumanPlayer != null)
             {
                 Vector3D playerPosition = MySession.LocalHumanPlayer.GetPosition();
-                if (IsInRange(playerPosition))
+                if (IsInRange(playerPosition) && !MySandboxGame.IsDedicated)
                 {
                     GenerateFloraGraphics(playerPosition);
                 }
@@ -651,7 +670,7 @@ namespace Sandbox.Game.Entities
         {
             MyObjectBuilder_Planet planetBuilder = (MyObjectBuilder_Planet)base.GetObjectBuilder(copy);
 
-            planetBuilder.Radius = m_planetInitValues.AtmosphereRadius;
+            planetBuilder.Radius = m_planetInitValues.AveragePlanetRadius;
             planetBuilder.HasAtmosphere = m_planetInitValues.HasAtmosphere;
             planetBuilder.AtmosphereRadius = m_planetInitValues.AtmosphereRadius;
             planetBuilder.MinimumSurfaceRadius = m_planetInitValues.MinimumSurfaceRadius;
@@ -718,6 +737,17 @@ namespace Sandbox.Game.Entities
                 {
                     m_planetEnvironmentSectors[pos].UpdateSectorGraphics();
                     m_planetEnvironmentSectors.Remove(pos);
+                }
+            }
+        }
+
+        public void DebugDrawPhysics()
+        {
+            if (m_physicsShapes != null)
+            {
+                foreach (var shape in m_physicsShapes)
+                {
+                    shape.Value.Physics.DebugDraw();
                 }
             }
         }

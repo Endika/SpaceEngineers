@@ -27,16 +27,16 @@ namespace Sandbox.Game.Entities
                switch (MySession.Static.Settings.FloraDensity)
                {
                    case 10:
-                       return 500;
+                       return 250;
                        break;
                    case 20:
-                       return 750;
+                       return 500;
                        break;
                    case 30:
-                       return 1000;
+                       return 750;
                        break;
                    case 40:
-                       return 1500;
+                       return 1000;
                        break;
                }
                return 0;
@@ -58,6 +58,8 @@ namespace Sandbox.Game.Entities
         public bool HasGraphics = false;
 
         private Dictionary<MyStringHash, MyEnvironmentItems.MyEnvironmentItemsSpawnData> m_spawners;
+
+        int m_numPlacedItems = 0;
 
         public MyPlanetEnvironmentSector()
         { 
@@ -133,6 +135,7 @@ namespace Sandbox.Game.Entities
 
                                 var spawner = m_spawners[cl.Id.SubtypeId];
                                 MyEnvironmentItems.SpawnItem(spawner, itemDef, m_spawnPositions[i], direction);
+                                m_numPlacedItems++;
                             }
                         }
 
@@ -153,7 +156,7 @@ namespace Sandbox.Game.Entities
         public void UpdateSectorGraphics()
         {
             HasGraphics = true;
-            if (m_spawners == null)
+            if (m_spawners == null || m_numPlacedItems == 0)
             {
                 return;
             }

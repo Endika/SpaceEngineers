@@ -54,6 +54,7 @@ namespace Sandbox.Game.Entities.Character
 {
     public abstract class MyCharacterDetectorComponent : MyCharacterComponent
     {
+        IMyEntity m_detectedEntity;
         IMyUseObject m_interactiveObject;
 
         protected MyHudNotification m_useObjectNotification;
@@ -69,9 +70,9 @@ namespace Sandbox.Game.Entities.Character
 
             m_usingContinuously = false;
 
-            if (MySession.ControlledEntity == Character && !Character.IsSitting && !Character.IsDead)
+            if (!Character.IsSitting && !Character.IsDead)
             {
-                DoDetection(MySession.GetCameraControllerEnum() != MyCameraControllerEnum.ThirdPersonSpectator);
+                DoDetection();
             }
             else
             {
@@ -80,6 +81,11 @@ namespace Sandbox.Game.Entities.Character
                     MyHud.SelectedObjectHighlight.Visible = false;
                 }
             }
+        }
+
+        public void DoDetection()
+        {
+            DoDetection(!Character.TargetFromCamera);
         }
 
         protected abstract void DoDetection(bool useHead);
@@ -104,6 +110,25 @@ namespace Sandbox.Game.Entities.Character
                 }
             }
         }
+
+        public IMyEntity DetectedEntity
+        {
+            protected set { m_detectedEntity = value; }
+            get { return m_detectedEntity; }
+        }
+
+        public Vector3D HitPosition { protected set; get; }
+
+        public Vector3 HitNormal { protected set; get; }
+
+        public uint ShapeKey { protected set; get; }
+
+        public Vector3D StartPosition { protected set; get; }
+
+        public MyStringHash HitMaterial { protected set; get; }
+
+        public HkRigidBody HitBody { protected set; get; }
+
 
         void UseClose()
         {
@@ -166,5 +191,24 @@ namespace Sandbox.Game.Entities.Character
             m_usingContinuously = true;
         }
 
+        public override void OnCharacterDead()
+        {
+            base.OnCharacterDead();
+
+            InteractiveObjectRemoved();
+		}
+
+        public override void OnAddedToContainer()
+        {
+            base.OnAddedToContainer();            
+            NeedsUpdateAfterSimulation10 = true;
+        }
+
+        public override void OnRemovedFromScene()
+        {
+            base.OnRemovedFromScene();
+
+            InteractiveObjectRemoved();
+        }
     }
 }

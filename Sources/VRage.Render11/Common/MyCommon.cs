@@ -49,6 +49,7 @@ namespace VRageRender
         internal static ConstantsBufferId ObjectConstants { get; set; }
         internal static ConstantsBufferId FoliageConstants { get; set; }
         internal static ConstantsBufferId MaterialFoliageTableConstants { get; set; }
+        internal static ConstantsBufferId OutlineConstants { get; set; }
 
         internal static UInt64 FrameCounter = 0;
 
@@ -61,6 +62,7 @@ namespace VRageRender
             ObjectConstants = MyHwBuffers.CreateConstantsBuffer(sizeof(Matrix));
             FoliageConstants = MyHwBuffers.CreateConstantsBuffer(sizeof(Matrix));
             MaterialFoliageTableConstants = MyHwBuffers.CreateConstantsBuffer(sizeof(Vector4) * 256);
+            OutlineConstants = MyHwBuffers.CreateConstantsBuffer(sizeof(OutlineConstantsLayout));
         }
 
         internal static ShaderResourceView GetAmbientBrdfLut()
@@ -102,6 +104,8 @@ namespace VRageRender
              internal Matrix View;
              internal Matrix Projection;
              internal Matrix InvView;
+             internal Matrix InvProjection;
+             internal Matrix InvViewProjection;
              internal Matrix ViewProjectionWorld;
              internal Vector4 WorldOffset;
              internal Vector2 Resolution;
@@ -170,6 +174,8 @@ namespace VRageRender
             constants.Projection = Matrix.Transpose(MyEnvironment.Projection);
             constants.ViewProjection = Matrix.Transpose(MyEnvironment.ViewProjectionAt0);
             constants.InvView = Matrix.Transpose(MyEnvironment.InvViewAt0);
+            constants.InvProjection = Matrix.Transpose(MyEnvironment.InvProjection);
+            constants.InvViewProjection = Matrix.Transpose(MyEnvironment.InvViewProjectionAt0);
             constants.ViewProjectionWorld = Matrix.Transpose(MyEnvironment.ViewProjection);
             constants.WorldOffset = new Vector4(MyEnvironment.CameraPosition, 0);
             

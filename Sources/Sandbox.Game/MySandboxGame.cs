@@ -86,6 +86,7 @@ namespace Sandbox
         public static bool IsUpdateReady = true;
 
         public static bool IsConsoleVisible = false;
+        public static bool IsReloading = false;
 
         public static bool FatalErrorDuringInit = false;
         public static VRageGameServices Services { get; private set; }
@@ -130,6 +131,8 @@ namespace Sandbox
         private readonly MyConcurrentQueue<Action> m_invokeQueue = new MyConcurrentQueue<Action>(32);
 
         public MyGameRenderComponent GameRenderComponent;
+
+        public MySessionCompatHelper SessionCompatHelper = null;
 
         public static MyConfig Config;
         public static IMyConfigDedicated ConfigDedicated;
@@ -211,7 +214,12 @@ namespace Sandbox
 
                 MyLog.Default.WriteLineAndConsole("Bind IP : " + ep.ToString());
 
-                MyDedicatedServer dedicatedServer = new MyDedicatedServer(ep);
+                MyDedicatedServerBase dedicatedServer = null;
+                if (MyFakes.ENABLE_BATTLE_SYSTEM && MySandboxGame.ConfigDedicated.SessionSettings.Battle)
+                    dedicatedServer = new MyDedicatedServerBattle(ep);
+                else 
+                    dedicatedServer = new MyDedicatedServer(ep);
+
                 MyMultiplayer.Static = dedicatedServer;
 
                 FatalErrorDuringInit = !dedicatedServer.ServerStarted;
@@ -227,8 +235,10 @@ namespace Sandbox
             // Game tags contain game data hash, so they need to be sent after preallocation
             if (IsDedicated && !FatalErrorDuringInit)
             {
-                (MyMultiplayer.Static as MyDedicatedServer).SendGameTagsToSteam();
+                (MyMultiplayer.Static as MyDedicatedServerBase).SendGameTagsToSteam();
             }
+
+            SessionCompatHelper = Activator.CreateInstance(MyPerGameSettings.CompatHelperType) as MySessionCompatHelper;
 
             ProfilerShort.BeginNextBlock("InitMultithreading");
 
@@ -474,6 +484,15 @@ namespace Sandbox
             MySpaceBindingCreator.CreateBinding();
         }
 
+        private void InitJoystick()
+        {
+            var joysticks = MyInput.Static.EnumerateJoystickNames();
+            if (MyFakes.ENFORCE_CONTROLLER && joysticks.Count > 0)
+            {
+                MyInput.Static.JoystickInstanceName = joysticks[0];
+            }
+        }
+
         protected virtual void InitSteamWorkshop()
         {
             MySteamWorkshop.Init(
@@ -614,7 +633,11 @@ namespace Sandbox
                         {
                             if (MySteamWorkshop.DownloadWorldModsBlocking(checkpoint.Mods))
                             {
-                                MySession.Load(lastSessionPath, checkpoint, checkpointSizeInBytes);
+                                if (MyFakes.ENABLE_BATTLE_SYSTEM && ConfigDedicated.SessionSettings.Battle)
+                                    MySession.LoadBattle(lastSessionPath, checkpoint, checkpointSizeInBytes, ConfigDedicated.SessionSettings);
+                                else
+                                    MySession.Load(lastSessionPath, checkpoint, checkpointSizeInBytes);
+
                                 MySession.Static.StartServer(MyMultiplayer.Static);
                             }
                             else
@@ -645,7 +668,11 @@ namespace Sandbox
                             {
                                 if (MySteamWorkshop.DownloadWorldModsBlocking(checkpoint.Mods))
                                 {
-                                    MySession.Load(sessionPath, checkpoint, checkpointSizeInBytes);
+                                    if (MyFakes.ENABLE_BATTLE_SYSTEM && ConfigDedicated.SessionSettings.Battle)
+                                        MySession.LoadBattle(sessionPath, checkpoint, checkpointSizeInBytes, ConfigDedicated.SessionSettings);
+                                    else
+                                        MySession.Load(sessionPath, checkpoint, checkpointSizeInBytes);
+
                                     MySession.Static.StartServer(MyMultiplayer.Static);
                                     MyModAPIHelper.OnSessionLoaded();
                                 }
@@ -981,7 +1008,7 @@ namespace Sandbox
             WriteHavokCodeToLog();
             Parallel.StartOnEachWorker(() => HkBaseSystem.InitThread(Thread.CurrentThread.Name));
 
-            Sandbox.Engine.Physics.MyPhysicsBody.DebugGeometry = new HkGeometry();
+            Sandbox.Engine.Physics.MyPhysicsDebugDraw.DebugGeometry = new HkGeometry();
 
             Engine.Models.MyModels.LoadData();
 
@@ -1024,8 +1051,9 @@ namespace Sandbox
                 MySteam.API.Matchmaking.ServerChangeRequest += Matchmaking_ServerChangeRequest;
             }
 
-            ProfilerShort.BeginNextBlock("MyInput.LoadData");
+            ProfilerShort.BeginNextBlock("MyInput.LoadData");        
             MyInput.Static.LoadData(Config.ControlsGeneral, Config.ControlsButtons);
+            InitJoystick();
             ProfilerShort.End();
 
             MySandboxGame.Log.DecreaseIndent();
@@ -1193,7 +1221,7 @@ namespace Sandbox
 
             UnloadInput();
 
-            MyAudio.Static.UnloadData();
+            MyAudio.UnloadData();
 
             MySandboxGame.Log.DecreaseIndent();
             MySandboxGame.Log.WriteLine("MySandboxGame.UnloadData() - END");
@@ -1213,8 +1241,9 @@ namespace Sandbox
         void UnloadInput()
         {
             // Input
-            if (MyInput.Static != null)
-                MyInput.Static.UnloadData();
+            MyInput.UnloadData();
+
+            MyGuiGameControlsHelpers.Reset();
         }
 
         #endregion
@@ -1381,7 +1410,7 @@ namespace Sandbox
                         if (MySession.ControlledEntity != player.Character)
                         {
                             //Values are set inside method from sync object
-                            if (player.Character != null && player.IsRemotePlayer())
+                            if (player.Character != null && player.IsRemotePlayer && !player.Character.IsDead)
                                 player.Character.MoveAndRotate(Vector3.Zero, Vector2.Zero, 0);
                         }
                     }
@@ -1452,20 +1481,12 @@ namespace Sandbox
         void GetListenerLocation(ref VRageMath.Vector3 position, ref VRageMath.Vector3 up, ref VRageMath.Vector3 forward)
         {
             // NOTICE: up vector is reverted, don't know why, I still have to investigate it
-            if (MySession.LocalHumanPlayer != null && MySession.LocalHumanPlayer.Character != null)
+            if (MySector.MainCamera != null)
             {
-                position = MySession.LocalHumanPlayer.Character.WorldMatrix.Translation;
-                up = -MySession.LocalHumanPlayer.Character.WorldMatrix.Up;
-                forward = MySession.LocalHumanPlayer.Character.WorldMatrix.Forward;
+                position = MySector.MainCamera.Position;
+                up = -MySector.MainCamera.UpVector;
+                forward = MySector.MainCamera.ForwardVector;
             }
-            else
-                if (MySector.MainCamera != null)
-                {
-                    position = MySector.MainCamera.Position;
-                    up = -MySector.MainCamera.UpVector;
-                    forward = MySector.MainCamera.ForwardVector;
-                }
-
             const float epsilon = 0.00001f;
             Debug.Assert(up.Dot(forward) < epsilon && Math.Abs(up.LengthSquared() - 1) < epsilon && Math.Abs(forward.LengthSquared() - 1) < epsilon, "Invalid direction vectors for audio");
         }
@@ -1495,7 +1516,7 @@ namespace Sandbox
                 GameRenderComponent.Dispose();
             }
 
-            Sandbox.Engine.Physics.MyPhysicsBody.DebugGeometry.Dispose();
+            Sandbox.Engine.Physics.MyPhysicsDebugDraw.DebugGeometry.Dispose();
             Parallel.StartOnEachWorker(HkBaseSystem.QuitThread);
             HkBaseSystem.Quit();
         }
@@ -1743,6 +1764,11 @@ namespace Sandbox
 
             Parallel.Scheduler.WaitForTasksToFinish(TimeSpan.FromSeconds(10));
             m_windowCreatedEvent.Dispose();
+
+
+            IlChecker.Clear();
+
+            Services = null;
         }
 
         internal static void SignalClipmapsReady()
@@ -1780,6 +1806,17 @@ namespace Sandbox
         {
             IntPtr gameState = new IntPtr(MySession.Static == null ? 0 : 1);
             WinApi.PostMessage(msg.WParam, MyWMCodes.GAME_IS_RUNNING_RESULT, gameState, IntPtr.Zero);
+        }
+
+        public static void ReloadDedicatedServerSession()
+        {
+            if (!IsDedicated)
+                return;
+
+            MyLog.Default.WriteLineAndConsole("Reloading dedicated server");
+
+            IsReloading = true;
+            MySandboxGame.Static.Exit();
         }
     }
 }
